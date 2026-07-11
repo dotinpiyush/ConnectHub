@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: connecthub-frontend
+  namespace: connecthub
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: connecthub-frontend
+  template:
+    metadata:
+      labels:
+        app: connecthub-frontend
+    spec:
+      containers:
+        - name: frontend
+          image: dotinpiyush/connecthub-frontend:latest # build & push from ./frontend/Dockerfile
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: connecthub-frontend-service
+  namespace: connecthub
+spec:
+  selector:
+    app: connecthub-frontend
+  ports:
+    - port: 80
+      targetPort: 80
+  type: ClusterIP
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: connecthub-ingress
+  namespace: connecthub
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: connecthub.local # replace with your real domain
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: connecthub-backend-service
+                port:
+                  number: 5000
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: connecthub-frontend-service
+                port:
+                  number: 80
