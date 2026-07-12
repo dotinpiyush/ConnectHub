@@ -27,13 +27,25 @@ export const AuthProvider = ({ children }) => {
     return data;
   };
 
+  const loginWithGoogle = async (credential) => {
+    const { data } = await axios.post(`${API_URL}/auth/google`, { credential });
+    persist(data);
+    return data;
+  };
+
   const logout = () => {
     localStorage.removeItem("connecthub_user");
     setUser(null);
   };
 
+  const updateUser = (updates) => {
+    const nextUser = { ...user, ...updates };
+    persist(nextUser);
+    return nextUser;
+  };
+
   return (
-    <AuthContext.Provider value={{ user, register, login, logout }}>
+    <AuthContext.Provider value={{ user, register, login, loginWithGoogle, logout, updateUser }}>
       {children}
     </AuthContext.Provider>
   );

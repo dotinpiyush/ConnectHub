@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Chat from "./pages/Chat";
+import Social from "./pages/Social";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 export default function App() {
@@ -11,6 +12,14 @@ export default function App() {
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
       <Route
+        path="/social"
+        element={
+          <ProtectedRoute>
+            <Social />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/chat"
         element={
           <ProtectedRoute>
@@ -18,7 +27,7 @@ export default function App() {
           </ProtectedRoute>
         }
       />
-      <Route path="*" element={<Navigate to="/chat" replace />} />
+      <Route path="*" element={<Navigate to="/social" replace />} />
     </Routes>
   );
 }

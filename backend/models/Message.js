@@ -6,6 +6,12 @@ const messageSchema = new mongoose.Schema(
     sender: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
     text: { type: String, required: true, trim: true },
     readBy: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+    reactions: [
+      {
+        user: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+        emoji: { type: String, required: true },
+      },
+    ],
   },
   { timestamps: true }
 );

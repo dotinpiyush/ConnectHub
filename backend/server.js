@@ -12,6 +12,7 @@ const Message = require("./models/Message");
 
 const authRoutes = require("./routes/authRoutes");
 const chatRoutes = require("./routes/chatRoutes");
+const socialRoutes = require("./routes/socialRoutes");
 
 connectDB();
 
@@ -21,6 +22,7 @@ app.use(express.json());
 
 app.use("/api/auth", authRoutes);
 app.use("/api/chat", chatRoutes);
+app.use("/api/social", socialRoutes);
 
 app.get("/", (req, res) => res.send("ConnectHub API is running"));
 
@@ -29,7 +31,6 @@ const io = new Server(server, {
   cors: { origin: process.env.CLIENT_URL || "*" },
 });
 
-// Socket auth middleware - verifies JWT sent from client on connection
 io.use((socket, next) => {
   try {
     const token = socket.handshake.auth?.token;
@@ -45,16 +46,13 @@ io.use((socket, next) => {
 io.on("connection", async (socket) => {
   console.log(`Socket connected: ${socket.userId}`);
 
-  // Mark user online
   await User.findByIdAndUpdate(socket.userId, { isOnline: true });
   socket.broadcast.emit("user_online", { userId: socket.userId });
 
-  // Join a chat room
   socket.on("join_room", (roomId) => {
     socket.join(roomId);
   });
 
-  // Handle sending a message
   socket.on("send_message", async ({ roomId, text }) => {
     try {
       const message = await Message.create({
@@ -64,14 +62,57 @@ io.on("connection", async (socket) => {
       });
       await Room.findByIdAndUpdate(roomId, { lastMessage: message._id });
 
-      const populated = await message.populate("sender", "name email");
+      await message.populate("sender", "name email");
+      await message.populate("readBy", "name email");
+      await message.populate("reactions.user", "name email");
+      const populated = message;
       io.to(roomId).emit("receive_message", populated);
     } catch (err) {
       socket.emit("error_message", { message: err.message });
     }
   });
 
-  // Typing indicators
+  socket.on("mark_read", async ({ roomId }) => {
+    try {
+      await Message.updateMany(
+        { room: roomId, readBy: { $ne: socket.userId } },
+        { $addToSet: { readBy: socket.userId } }
+      );
+      socket.to(roomId).emit("messages_read", { roomId, userId: socket.userId });
+    } catch (err) {
+      socket.emit("error_message", { message: err.message });
+    }
+  });
+
+  socket.on("react_message", async ({ roomId, messageId, emoji }) => {
+    try {
+      const message = await Message.findById(messageId);
+      if (!message) return;
+
+      const existingReaction = message.reactions.find(
+        (reaction) => reaction.user.toString() === socket.userId
+      );
+
+      if (existingReaction?.emoji === emoji) {
+        message.reactions = message.reactions.filter(
+          (reaction) => reaction.user.toString() !== socket.userId
+        );
+      } else if (existingReaction) {
+        existingReaction.emoji = emoji;
+      } else {
+        message.reactions.push({ user: socket.userId, emoji });
+      }
+
+      await message.save();
+      await message.populate("sender", "name email");
+      await message.populate("readBy", "name email");
+      await message.populate("reactions.user", "name email");
+      io.to(roomId).emit("message_reacted", message);
+    } catch (err) {
+      socket.emit("error_message", { message: err.message });
+    }
+  });
+
   socket.on("typing", ({ roomId, userName }) => {
     socket.to(roomId).emit("typing", { userName });
   });
@@ -86,7 +127,7 @@ io.on("connection", async (socket) => {
       isOnline: false,
       lastSeen: new Date(),
     });
-    socket.broadcast.emit("user_offline", { userId: socket.userId });
+    socket.broadcast.emit("user_offline", { userId: socket.userId, lastSeen: new Date() });
   });
 });
 

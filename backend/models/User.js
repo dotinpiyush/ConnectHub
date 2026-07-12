@@ -5,15 +5,27 @@ const userSchema = new mongoose.Schema(
   {
     name: { type: String, required: true, trim: true },
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
-    password: { type: String, required: true, minlength: 6 },
+    password: {
+      type: String,
+      required() {
+        return this.authProvider === "local";
+      },
+      minlength: 6,
+    },
+    authProvider: { type: String, enum: ["local", "google"], default: "local" },
+    googleId: { type: String, unique: true, sparse: true },
     avatar: { type: String, default: "" },
+    coverImage: { type: String, default: "" },
+    bio: { type: String, default: "Building connections on ConnectHub.", maxlength: 160 },
+    location: { type: String, default: "" },
+    followers: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+    following: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
     isOnline: { type: Boolean, default: false },
     lastSeen: { type: Date, default: Date.now },
   },
   { timestamps: true }
 );
 
-// Hash password before saving
 userSchema.pre("save", async function (next) {
   if (!this.isModified("password")) return next();
   const salt = await bcrypt.genSalt(10);
@@ -21,8 +33,8 @@ userSchema.pre("save", async function (next) {
   next();
 });
 
-// Compare entered password with hashed password
 userSchema.methods.matchPassword = async function (enteredPassword) {
+  if (!this.password) return false;
   return bcrypt.compare(enteredPassword, this.password);
 };
 

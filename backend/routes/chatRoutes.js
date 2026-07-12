@@ -6,12 +6,14 @@ const { protect } = require("../middleware/authMiddleware");
 
 const router = express.Router();
 
-// @route  GET /api/chat/rooms  -> all rooms current user belongs to
 router.get("/rooms", protect, async (req, res) => {
   try {
     const rooms = await Room.find({ members: req.user._id })
-      .populate("members", "name email isOnline")
-      .populate("lastMessage")
+      .populate("members", "name email isOnline lastSeen")
+      .populate({
+        path: "lastMessage",
+        populate: { path: "sender", select: "name email" },
+      })
       .sort({ updatedAt: -1 });
     res.json(rooms);
   } catch (err) {
@@ -19,7 +21,6 @@ router.get("/rooms", protect, async (req, res) => {
   }
 });
 
-// @route  POST /api/chat/rooms  -> start/find a 1-to-1 room with another user
 router.post("/rooms", protect, async (req, res) => {
   try {
     const { userId } = req.body;
@@ -34,18 +35,19 @@ router.post("/rooms", protect, async (req, res) => {
       room = await Room.create({ members: [req.user._id, userId], isGroup: false });
     }
 
-    room = await room.populate("members", "name email isOnline");
+    room = await room.populate("members", "name email isOnline lastSeen");
     res.status(201).json(room);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
 
-// @route  GET /api/chat/rooms/:roomId/messages
 router.get("/rooms/:roomId/messages", protect, async (req, res) => {
   try {
     const messages = await Message.find({ room: req.params.roomId })
       .populate("sender", "name email")
+      .populate("readBy", "name email")
+      .populate("reactions.user", "name email")
       .sort({ createdAt: 1 });
     res.json(messages);
   } catch (err) {
@@ -53,13 +55,30 @@ router.get("/rooms/:roomId/messages", protect, async (req, res) => {
   }
 });
 
-// @route  GET /api/chat/users  -> list users to start a chat with
 router.get("/users", protect, async (req, res) => {
   try {
     const users = await User.find({ _id: { $ne: req.user._id } }).select(
-      "name email isOnline"
+      "name email avatar bio isOnline lastSeen followers following"
     );
-    res.json(users);
+    res.json(
+      users.map((user) => ({
+        ...user.toObject(),
+        isFollowing: req.user.following.some((id) => id.toString() === user._id.toString()),
+        followersCount: user.followers.length,
+      }))
+    );
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+router.patch("/rooms/:roomId/read", protect, async (req, res) => {
+  try {
+    await Message.updateMany(
+      { room: req.params.roomId, readBy: { $ne: req.user._id } },
+      { $addToSet: { readBy: req.user._id } }
+    );
+    res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
